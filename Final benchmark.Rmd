@@ -1,0 +1,254 @@
+---
+title: "Individual reliance on AI tools, specifically Chatgpt for decision-making with the engagement of analytical thinking" 
+subtitle: "Final Project for EMS 747"
+author: "Joy Lin" 
+date: "`r Sys.Date()`"
+always_allow_html: true
+output: 
+  pdf_document:
+    fig_caption: true
+    number_sections: true
+    toc: false
+    toc_depth: 2
+bibliography: references.bib 
+---
+# RESEARCH PROJECT 
+## Introduction
+  Co-chairing the AI Action Summit with French President Emmanuel Macron in Paris on Feb 12th, Prime Minister Narendra Modi claimed that AI (Artificial Intelligence) had already re-shaped people’s polity, economy, security and even the society. The world now is at the “dawn of the AI age” that relates to each individual[@fuihoon2023generativeai]. In school, there is always a detailed section identifying AI usage policy, including how to proper citation for AI usage and school’s specific AI detection. Especially as one of the students majored in emerging media studies, it doesn’t work if we don’t incorporate AI tools. Instead, there is a need for figuring out how AI tools like ChatGPT affect thinking patterns, which is crucial for designing AI technologies that support an individual's cognitive processing strategies and maintain human intellectual capacities.
+  This research aims to figure out to the relationship between individual's reliance on AI tools and their decision-making progress.The dataset is collected from kaggle by the researcher Khalid Ansari. The title of the data is called 500k Chatgpt-related Tweets Jan-Mar 2023. The data gather users’ comments on Twitter buzzing with discussions about conversational large language models like Chatgpt, BARD, and Alpaca. The collected data spans from January 4th, 2023 to March 29th, 2023, providing ample time to observe daily, weekly, and quarterly trends. The dataset also includes information related to Chatgpt including keywords (ChatGPT, chat GPT) #hashtags, and @mentions about ChatGPT and OpenAI's conversational AI model on 500,000 tweets.
+
+### Research Questions
+My RQ is: : To what extent does reliance on AI tools, specifically Chatgpt for decision-making reduce the engagement of analytical thinking in the first quarter of 2023? 
+
+## Methods
+Step 1. Data Collection
+Step 2. Data Cleaning
+Step 3. Topic Modeling (Top 20 words)
+Step 4. Sentiment Analysis
+Step 5. Visualizations 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE, 
+  warning = FALSE,
+  eval = TRUE,
+  fig.width = 6,     
+  fig.height = 4,    
+  fig.align = "center"  
+)
+```
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+library(readr)
+library(tm)
+library(tidytext)
+library(tidyverse)
+library(stopwords)
+library(ldatuning)
+library(quanteda)
+library(stm)
+library(topicmodels)
+library(parallel)
+library(vtable)
+library(naniar)
+"/Users/joylim/Desktop/Study/trending insights/Assignment/Final_Data/Twitter Jan Mar.csv"
+Twitter_Jan_Mar <- read_csv("/Users/joylim/Desktop/Study/trending insights/Final Data/Twitter Jan Mar.csv")
+```
+
+```{r, eval=FALSE}
+# Data Collection
+str(Twitter_Jan_Mar) 
+# Convert the date column to a standard format
+date <-as.Date(Twitter_Jan_Mar$date)
+```
+
+#### Missing Data
+It shows that no missing data in this dataset.
+```{r, fig.width=5, fig.height=3.5, fig.cap="Missing Data Visualization"}
+#use is.na(Twitter_Jan_Mar) to check the missing data when returns TRUE
+gg_miss_var(Twitter_Jan_Mar, show_pct = TRUE) +
+  labs(
+    title = "Missing Data Visualization",
+    x = "Variable",
+    y = "Number of Missing Values"
+  ) +
+  theme_minimal()
+```
+
+#### Data Cleaning
+```{r}
+Twitter_Jan_Mar1 <- Twitter_Jan_Mar 
+Twitter_Jan_Mar1$post_index <- seq_len(nrow(Twitter_Jan_Mar1)) 
+Twitter_Jan_Mar1$contentBU <- Twitter_Jan_Mar1$content #content backup
+
+Twitter_Jan_Mar2 <- Twitter_Jan_Mar1 |> #remove all duplicate content
+  distinct(content, .keep_all = TRUE)
+
+tidy_data <- Twitter_Jan_Mar2 |> 
+  unnest_tokens(word, content) |>  # tokenizing
+  anti_join(stop_words, by = "word") |>
+  mutate(nchar=nchar(word)) |>
+  filter(!grepl("[0-9]{1}", word)) |>  # removing numbers 
+  filter(!grepl("\\W", word))  # removing any word containing non letter/number 
+head(tidy_data )
+```
+
+#### Topic Modeling 
+After finishing the data cleaning, i use topic modeling to generate top 20 words of the posts [@blei2003latent].
+Dominant words like ai, gpt, chat, and openai indicates users pay attention on the core AI technologies, suggesting a strong awareness and engagement with conversational AI tools like ChatGPT and its creators. Words such as write, asked, make, content, and language show how users interact with AI for practical tasks, including content creation and communication. The high frequency of action-oriented terms implies that users are not just passive observers but active participants, using AI tools in everyday decisions.
+```{r, echo=TRUE}
+maxndoc=0.5
+minndoc=0.00001
+templength<-length(unique(tidy_data$post_index))
+good_common_words <- tidy_data |> 
+  count(post_index, word, sort = TRUE) |> 
+  group_by(word) |> 
+  summarize(doc_freq=n()/templength) |> 
+  filter(doc_freq<maxndoc) |> 
+  filter(doc_freq>minndoc)
+tidy_data_pruned <- tidy_data |>  inner_join(good_common_words, by = "word")
+tidy_data_pruned |> 
+  group_by(word) |> 
+  summarise(n=n()) |> 
+  arrange(desc(n)) |> 
+  mutate(word = reorder(word, n)) |> 
+  top_n(20) |>     
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+
+#tidy_dfm <- tidy_data_pruned |> 
+# count(post_index, word) |> 
+# cast_dfm(post_index, word, n)
+#tidy_dfm@Dim
+#full_data<- convert(tidy_dfm, to = "topicmodels")
+#rm(good_common_words, tidy_data, tidy_data_pruned, tidy_dfm, maxndoc, minndoc, templength)
+#my computer can't run the number of topics, so i keep tidy data pruned top 20 words, and change to the sentiment analysis
+#save.image("Upto_Findk.Rdata")
+```
+
+#### Sentiment Analysis
+```{r}
+library(textdata)
+get_sentiments("afinn")
+afinn_sentiments <- tidy_data |>
+  inner_join(get_sentiments("afinn")) |> 
+  group_by(post_index) |>  
+  summarise(sentiment = sum(value)) |> 
+  mutate(method = "AFINN")
+bing_sentiments <- tidy_data |>
+  inner_join(get_sentiments("bing"), by = "word") |> 
+  count(post_index, sentiment) |> 
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) |> 
+  mutate(sentiment = positive - negative) |> 
+  mutate(method = "Bing")
+nrc_sentiments <-   tidy_data |> 
+    inner_join(get_sentiments("nrc") |> 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))) |> 
+  count(post_index, sentiment) |> 
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) |> 
+  mutate(sentiment = positive - negative) |> 
+  mutate(method = "NRC")
+all_sentiments <- bind_rows(afinn_sentiments,
+          bing_sentiments,
+          nrc_sentiments) |> 
+  dplyr::select(-positive, -negative)
+```
+
+#### Sentiment Visualization
+From the AFINN graph, it shows a wider range of positive and negative intensity ranging from -40 to 20. Some spikes appear in the graph both positively and negatively, which means contents posted with strong emotion.
+From the BING and the NRC graph, they show fewer spikes with a lower range from -10 to 10, which means a more balanced sentiment. Compared to AFINN, smaller ranges appear likely due to fewer words being classified.
+```{r, fig.width=5, fig.height=4, fig.cap="sentiment"}
+ggplot(all_sentiments,
+       aes(x=post_index, y=sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+  I use BING to analyze top 10 words in user comments. In terms of positive words, strong positive words,such as good and great,appear at the top. This suggests that users perceive these conversational AI models positively for their performance and accessibility.
+Frequent words related to work efficiency, such as intelligence, prompt, innovation, etc., reflect users appreciation for the AI’s creative capabilities and users prefer using AI tools in their work. This also implies that users increasingly reliance on AI models in professional or personal decision-making processes, treating them as credible sources for knowledge-intensive tasks.
+  For negative words, wrong, bad, problem, such dominant negative words show the unsatisfied outcome when users apply with AI tools, which also means technical issues of AI tools still need to be figured out. “hype,” “bias,” and “fake” highlight users skepticism and concerns about the unrealistic expectations of AI tools and bias in generated content. Users still keep their subjective initiative using AI instead of complete dependence. 
+```{r, fig.width=5, fig.height=4, fig.cap="BING-Top 20 words in posts"}
+bing_word_counts <- tidy_data |> 
+  inner_join(get_sentiments("bing")) |> 
+  count(word, sentiment, sort = TRUE) |> 
+  ungroup()
+bing_word_counts |> 
+  group_by(sentiment) |> 
+  slice_max(n, n = 10) |> 
+  ungroup() |> 
+  mutate(word = reorder(word, n)) |> 
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Sentiment Count",
+       y = NULL)
+```
+
+#### Descriptive Data Visualizations
+The mean number of likes is 7 that is relatively low, indicating most tweets received little interaction. The max value of like reach to 64094 suggests significant skewness that most tweets have few or no likes, while few tweets are extremely popular.
+Retweets are even less frequent than likes, indicating even greater skewness. Majority of the tweets have 0 retweets, highlighting a small scale of spread for most content, yet a few highly influential tweets still exist.
+```{r, echo=TRUE}
+#Descriptive statistics on likes and retweets
+summary(Twitter_Jan_Mar2[, c("like_count", "retweet_count")])
+st(Twitter_Jan_Mar2)
+```
+
+The regression line shows that receiving a high number of likes does not mean a tweet will also receive a high number of retweets. Users may engage differently with content depending on different tweet context.Tweets that relate to a timely and relevant topic might accumulate more retweets to enrich the conversation while a personal or emotional context could receive more likes as a form of support or empathy. Tweets with high likes but fewer retweets may indicate AI content users personally trust but hesitate to share publicly. In addition, the differing engagement patterns might reflect users’ different information needs. Some users may primarily seek comfort or validation (likes), while others are driven to spread novel insights (retweets) relevant to their social decisions.
+```{r, echo=TRUE}
+# Checking the number of unique values in each column
+sapply(Twitter_Jan_Mar2, function(x) n_distinct(x))
+# Regression line: Sort dataframe by like_count, highest to lowest
+df_sorted <- Twitter_Jan_Mar2 |>
+  arrange(desc(like_count))
+head(df_sorted)
+max_like_count = 2000
+max_retweet_count = 500
+ggplot(data = Twitter_Jan_Mar2, aes(x =like_count, y =retweet_count)) +
+  geom_point(alpha = 5.) + #adjust the transparency of scatter points
+  geom_smooth(method = "lm", se = FALSE, color = "blue") + #add a regression line
+  labs(
+    title = "Likes vs. Retweets",
+    x = "Likes",
+    y = "Retweets"
+  ) +
+  theme_minimal()
+```
+
+####Timeline Analysis: Tweets per day
+  Visualizing Tweet volume against the dates will give the richer insights into user engagement(Tweet volume) on ChatGPT based on major events surrounding the technology. In general, tweet volume on ChatGPT is lowest on weekends approximately. Tweet volumes remain relatively consistent on weekdays, reflecting stable daily interactions or discussions around AI technology. The lower engagement observed on weekends could reflect professional or educational reliance suggesting that users interact with ChatGPT primarily for professional or educational purposes during weekdays.
+  It is noticeable that there are two peaks that appear on February and March respectively. This might be related to some events happened in 2023 during the same period. In Feb 2023, Chinese company Alibaba Group announced that it was developing a rival to OpenAI’s ChatGPT AI chatbot. Meanwhile, a study explored the potential of ChatGPT, a popular AI chatbot, in generating academic essays that can evade plagiarism detection tools, which triggered the discussion across the world [@kingchang2024artificia]. When it comes to March 14th 2023, OpenAI announced GPT-4, the latest and most capable AI language model in its line of language models at that time [@oca2023bias]. Then in March 17 2023, after the release of GPT-4, the CEO of OpenAI was in an interview with ABC News and said that AI technology would reshape society as we know it, but that it came with real dangers [@tawfeeq2023ethical]. These events led to various thoughts and attitudes towards users, which indirectly boosted the increasing tweets volumes. 
+```{r, echo=TRUE}
+Twitter_Jan_Mar2$date <- as.Date(Twitter_Jan_Mar2$date)
+head(Twitter_Jan_Mar2$date)
+tweets_by_day <- Twitter_Jan_Mar2 |>
+  group_by(date)  |>
+  summarise(count = n(), .groups = 'drop')
+#Visualization
+ggplot(tweets_by_day, aes(x = date, y = count)) +
+  geom_bar(stat = "identity", fill = "pink") +
+  labs(
+    title = "Number of Tweets per Day",
+    x = "Date",
+    y = "Tweet Count"
+  ) +
+  theme_minimal()
+```
+
+## Discussions 
+  Topic modeling revealed a high frequency of terms like ai, gpt, openai, and competitive mentions such as google, microsoft, etc. These indicate widespread awareness and critical comparative discussions among users, highlighting that decisions about reliance on AI tools are not completely; instead, users actively compare and contrast different tools based on capabilities,with major AI technologies. In addition, sentiment analysis using the AFINN, BING, and NRC demonstrated the users' perception toward AI tools. Users express positive sentiments associated with words like  “intelligence,” “innovation,” and “interesting,” reflecting an appreciation for AI’s ability to enhance productivity and efficiency. On the contrary, negative sentiment analysis revealed users' concerns about information accuracy and ethical issues. 
+  This research also finds that tweet volume correlated with key AI events and also observed a steady increase in ChatGPT’s popularity since it’s release. Analyzing tweet volume trends in a specific timeline clearly highlights that user engagement with AI-related conversations varies significantly across weekdays and weekends. Specifically, tweet volumes are consistently lower during weekends, potentially indicating that interactions with conversational AI tools such as Chatgpt are academically oriented that correlate with typical weekday activities. Two distinct peaks in tweet volume during February and March 2023 link with great AI industry announcements. Such patterns clearly shows that public discourse and user engagement are strongly event-driven, influenced by developments that focusing on either technological advancement or ethical concerns.
+
+## Limitations & Ethical Concerns/Data impact statement
+Although this research give a basic topic modeling, the optimal topic numbers haven't been provided because of the capbility of researcher's computer and the large amount of dataset [@logan2018thinking]. Combined with the optimal topic numbers, a focused deep dive into LDA Topic Modeling could give more insights. The specific dates of timeline analysis is also lack, which could be improved by running the pipeline for each month/week/day to do a more focused analysis. Besides, this dataset gives an abundant data of various AI tools that provides different angles for analyzing conversational AI. However, it may affect the accuracy of analyzing Chatgpt's running model separately [@wen2025thinkpatterns]. 
+
+## References
+
+ 
